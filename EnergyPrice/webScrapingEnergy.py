@@ -1,4 +1,6 @@
 import requests
+import sqlite3
+from sqlite3 import Error
 
 GREEN_FLAG = 0
 YELLOW_FLAG = 0.01874
