@@ -38,6 +38,12 @@ def loadImage(file: str, locationX: int = 0, locationY: int = 0) -> bool:
             else:
                 continue
 
+def verifyTableExist(stmt: object, name: str) -> tuple:
+    # There is no risk of SQL injection here, so it is possible make this to create tables dinamycally
+    sql = "SELECT name FROM sqlite_master WHERE name='{}'".format(name)
+    res = stmt.execute(sql)
+    return res.fetchone()
+
 def main():
     """Web scraping data from CPFL
     To get the token authenticator is necessary check the captcha manually
@@ -75,28 +81,21 @@ def main():
         # Connection with database
         conn = sqlite3.connect('EnergyPrice\\EnergyBD.db')
         stmt = conn.cursor()
-        # Verify if exists table state
-        res = stmt.execute("SELECT name FROM sqlite_master WHERE name='state'")
-        compare = res.fetchone()
-        if compare is None:
+        verify = verifyTableExist(stmt, 'state')
+        if verify is None:
             stmt.execute("CREATE TABLE state(id, name)")
             stmt.executemany("INSERT INTO state VALUES(:Codigo, :Nome)", states['Estados'])
             conn.commit()
         for state in states['Estados']:
             cities = requests.get(f"https://servicosonline.cpfl.com.br/agencia-webapi/api/estado/{state['Codigo']}/municipio?apenasConcessao=true", headers=header).json()
-            # Verify if exists table city
-            res = stmt.execute("SELECT name FROM sqlite_master WHERE name='city'")
-            compare = res.fetchone()
-            if compare is None:
+            verify = verifyTableExist(stmt, 'city')
+            if verify is None:
                 stmt.execute("CREATE TABLE city(id, name, flag, company, validityperiod, state)")
             for city in cities['Municipios']:
                 # Verify if the info of the city already exist in database, this is the best place for that code because speed up the script in case of the token expires
                 name = 'FeeList' + city['Codigo'] + state['Codigo']
-                # There is no risk of SQL injection here, so it is possible make this to create tables dinamycally
-                sql = "SELECT name FROM sqlite_master WHERE name='{}'".format(name)
-                res = stmt.execute(sql)
-                compare = res.fetchone()
-                if compare is None:
+                verify = verifyTableExist(stmt, name)
+                if verify is None:
                     # Collect data about the city
                     dataPost = {'CodMunicipio': city['Codigo']}
                     dataCity = requests.post(f'https://servicosonline.cpfl.com.br/agencia-webapi/api/taxas-tarifas/validar-situacao', json=dataPost, headers=header).json()
