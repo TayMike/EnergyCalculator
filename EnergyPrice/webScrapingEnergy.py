@@ -40,54 +40,83 @@ def main():
     """TODO Explain the core"""
 
     """Take captcha token"""
-    # webbrowser.open("https://servicosonline.cpfl.com.br/agencia-webapp/#/taxas-tarifas/localizar-distribuidora")
-    # loadImage('captcha.png')
-    # pyautogui.press('f12')
-    # sleep(5)
-    # loadImage('network.png')
-    # pyautogui.click()
-    # loadImage('captcha.png')
-    # pyautogui.click()
-    # sleep(60)
-    # loadImage('filter_network.png', locationY=25)
-    # pyautogui.click(clicks=3, interval=0.25)
-    # pyautogui.write('token')
-    # loadImage('token_network.png')
-    # pyautogui.click()
-    # loadImage('response_network.png')
-    # pyautogui.click()
-    # loadImage('response_network.png', locationY=30)
-    # pyautogui.click(clicks=3, interval=0.25)
-    # pyautogui.hotkey(('ctrl', 'c'))
-    # token = pyperclip.paste()
-    # token = token[1:len(token) - 1]
-    # pyautogui.hotkey(('ctrl', 'w'))
+    webbrowser.open("https://servicosonline.cpfl.com.br/agencia-webapp/#/taxas-tarifas/localizar-distribuidora")
+    loadImage('captcha.png')
+    pyautogui.press('f12')
+    sleep(5)
+    loadImage('network.png')
+    pyautogui.click()
+    loadImage('captcha.png')
+    pyautogui.click()
+    loadImage('provingSuccess.png')
+    loadImage('filter_network.png', locationY=25)
+    pyautogui.click(clicks=3, interval=0.25)
+    pyautogui.write('token')
+    loadImage('token_network.png')
+    pyautogui.click()
+    loadImage('response_network.png')
+    pyautogui.click()
+    loadImage('response_network.png', locationY=30)
+    pyautogui.click(clicks=3, interval=0.25)
+    pyautogui.hotkey(('ctrl', 'c'))
+    token = pyperclip.paste()
+    token = token[1:len(token) - 1]
+    pyautogui.hotkey(('ctrl', 'w'))
 
     try:
         # Token is valid by 15 minutes
-        header = {'Clientid': 'agencia-virtual-cpfl-web', 'Captcha-Token': "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJDYXB0Y2hhVmFsaWRvIjoiUyIsImNsaWVudElkIjoiYWdlbmNpYS12aXJ0dWFsLWNwZmwtd2ViIiwiQ2FwdGNoYUhvc3ROYW1lIjoic2Vydmljb3NvbmxpbmUuY3BmbC5jb20uYnIiLCJpc3MiOiJodHRwczovL3NlcnZpY29zb25saW5lLmNwZmwuY29tLmJyLyIsImF1ZCI6ImFnZW5jaWEtdmlydHVhbC1jcGZsLXdlYiIsImV4cCI6MTcwMzE5MzA3MSwibmJmIjoxNzAzMTkyNDcxfQ.UxNXe8k9z-LVwJz9VkqCMBe6DNu6Bq_ZjVQsZdA0_X0"}
-
+        header = {'Clientid': 'agencia-virtual-cpfl-web', 'Captcha-Token': token}
         states = requests.get('https://servicosonline.cpfl.com.br/agencia-webapi/api/estado?apenasConcessao=true', headers=header).json()
+        # Connection with database
         conn = sqlite3.connect('EnergyPrice\\EnergyBD.db')
         stmt = conn.cursor()
+        # Verify if exists table state
         res = stmt.execute("SELECT name FROM sqlite_master WHERE name='state'")
-        if res.fetchone() is None:
+        compare = res.fetchone()
+        if compare is None:
             stmt.execute("CREATE TABLE state(id, name)")
-        stmt.executemany("INSERT INTO state VALUES(:Codigo, :Nome)", states['Estados'])
-        conn.commit()
+            stmt.executemany("INSERT INTO state VALUES(:Codigo, :Nome)", states['Estados'])
+            conn.commit()
         for state in states['Estados']:
             cities = requests.get(f"https://servicosonline.cpfl.com.br/agencia-webapi/api/estado/{state['Codigo']}/municipio?apenasConcessao=true", headers=header).json()
+            # Verify if exists table city
             res = stmt.execute("SELECT name FROM sqlite_master WHERE name='city'")
-            if res.fetchone() is None:
+            compare = res.fetchone()
+            if compare is None:
                 stmt.execute("CREATE TABLE city(id, name, flag, company, validityperiod, state)")
             for city in cities['Municipios']:
-                city['UF'] = state['Codigo']
-                dataPost = {'CodMunicipio': city['Codigo']}
-                table = requests.post(f'https://servicosonline.cpfl.com.br/agencia-webapi/api/taxas-tarifas/validar-situacao', json=dataPost, headers=header).json()
-            stmt.executemany("INSERT INTO city VALUES(:Codigo, :Nome, :UF)", cities['Municipios'])
-            conn.commit()
-    except ConnectionError as e:
-        e.with_traceback()
+                # Verify if the info of the city already exist in database
+                name = 'FeeList' + city['Codigo'] + state['Codigo']
+                sql = "SELECT name FROM sqlite_master WHERE name='{}'".format(name)
+                res = stmt.execute(sql)
+                compare = res.fetchone()
+                if compare is None:
+                    # Collect data about the city
+                    dataPost = {'CodMunicipio': city['Codigo']}
+                    dataCity = requests.post(f'https://servicosonline.cpfl.com.br/agencia-webapi/api/taxas-tarifas/validar-situacao', json=dataPost, headers=header).json()
+                    # Join data about the city for SQL command
+                    city['State'] = state['Codigo']
+                    city['ValidityPeriod'] = dataCity['PeriodoVigencia']
+                    city['Flag'] = dataCity['Bandeira']
+                    city['Company'] = dataCity['Empresa']
+                    # Join data about the fee of the city
+                    FeeList = dataCity['ListTarifas']
+                    for Fee in FeeList:
+                        Fee['City'] = city['Codigo']
+                    sql = "CREATE TABLE {}(Description, TUSD, TE_Verde, TE_Amarela, TE_Vermelha, Discount)".format(name)
+                    stmt.execute(sql)
+                    sql = "INSERT INTO {} VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto)".format(name)
+                    stmt.executemany(sql, FeeList)
+                    conn.commit()
+                print("Next " + state['Codigo'] + "-" + city['Nome'])
+            # Verify if the info is already in the table
+            res = stmt.execute("SELECT id FROM state WHERE id=?", [state['Codigo']])
+            compare = res.fetchone()
+            if compare is None:
+                stmt.executemany("INSERT INTO city VALUES(:Codigo, :Nome, :Flag, :Company, :ValidityPeriod, :State)", cities['Municipios'])
+                conn.commit()
+    except Exception as e:
+        pass
     finally:
         if (stmt):
             stmt.close()
