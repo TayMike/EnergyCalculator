@@ -11,9 +11,11 @@ import os
 from time import sleep
 
 import sqlite3
-from sqlite3 import Error
 
-DELAY = 10
+# Delay for time out if the script do not find the image on the screen
+DELAY = 60
+
+# Flags for extra fee in energy prices in Brazil
 GREEN_FLAG = 0
 YELLOW_FLAG = 0.01874
 RED_FLAG = 0.03971
@@ -37,9 +39,12 @@ def loadImage(file: str, locationX: int = 0, locationY: int = 0) -> bool:
                 continue
 
 def main():
-    """TODO Explain the core"""
+    """Web scraping data from CPFL
+    To get the token authenticator is necessary check the captcha manually
+    After that the code is going to run fine, maybe you need run the script twice because the timer of the token
+    """
 
-    """Take captcha token"""
+    # Take captcha token for Rest API
     webbrowser.open("https://servicosonline.cpfl.com.br/agencia-webapp/#/taxas-tarifas/localizar-distribuidora")
     loadImage('captcha.png')
     pyautogui.press('f12')
@@ -85,8 +90,9 @@ def main():
             if compare is None:
                 stmt.execute("CREATE TABLE city(id, name, flag, company, validityperiod, state)")
             for city in cities['Municipios']:
-                # Verify if the info of the city already exist in database
+                # Verify if the info of the city already exist in database, this is the best place for that code because speed up the script in case of the token expires
                 name = 'FeeList' + city['Codigo'] + state['Codigo']
+                # No risk of SQL injection here, so it is possible make this to create tables dinamycally
                 sql = "SELECT name FROM sqlite_master WHERE name='{}'".format(name)
                 res = stmt.execute(sql)
                 compare = res.fetchone()
@@ -109,14 +115,14 @@ def main():
                     stmt.executemany(sql, FeeList)
                     conn.commit()
                 print("Next " + state['Codigo'] + "-" + city['Nome'])
-            # Verify if the info is already in the table
+            # Verify if the info of states is already in the table. This will prevent the duplication of the code 
             res = stmt.execute("SELECT id FROM state WHERE id=?", [state['Codigo']])
             compare = res.fetchone()
             if compare is None:
                 stmt.executemany("INSERT INTO city VALUES(:Codigo, :Nome, :Flag, :Company, :ValidityPeriod, :State)", cities['Municipios'])
                 conn.commit()
     except Exception as e:
-        pass
+        e.with_traceback()
     finally:
         if (stmt):
             stmt.close()
