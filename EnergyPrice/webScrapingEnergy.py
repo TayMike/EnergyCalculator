@@ -92,7 +92,7 @@ def main():
             for city in cities['Municipios']:
                 # Verify if the info of the city already exist in database, this is the best place for that code because speed up the script in case of the token expires
                 name = 'FeeList' + city['Codigo'] + state['Codigo']
-                # No risk of SQL injection here, so it is possible make this to create tables dinamycally
+                # There is no risk of SQL injection here, so it is possible make this to create tables dinamycally
                 sql = "SELECT name FROM sqlite_master WHERE name='{}'".format(name)
                 res = stmt.execute(sql)
                 compare = res.fetchone()
