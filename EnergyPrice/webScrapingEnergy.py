@@ -38,10 +38,8 @@ def loadImage(file: str, locationX: int = 0, locationY: int = 0) -> bool:
             else:
                 continue
 
-def verifyTableExist(stmt: object, name: str) -> tuple:
-    # There is no risk of SQL injection here, so it is possible make this to create tables dinamycally
-    sql = "SELECT name FROM sqlite_master WHERE name='{}'".format(name)
-    res = stmt.execute(sql)
+def verifyTableExist(stmt: object, name: str) -> list:
+    res = stmt.execute("SELECT name FROM sqlite_master WHERE name=?", [name])
     return res.fetchone()
 
 def main():
@@ -81,21 +79,24 @@ def main():
         # Connection with database
         conn = sqlite3.connect('EnergyPrice\\EnergyBD.db')
         stmt = conn.cursor()
-        verify = verifyTableExist(stmt, 'state')
-        if verify is None:
+        verifyState = verifyTableExist(stmt, 'state')
+        if verifyState is None:
             stmt.execute("CREATE TABLE state(id, name)")
             stmt.executemany("INSERT INTO state VALUES(:Codigo, :Nome)", states['Estados'])
             conn.commit()
         for state in states['Estados']:
             cities = requests.get(f"https://servicosonline.cpfl.com.br/agencia-webapi/api/estado/{state['Codigo']}/municipio?apenasConcessao=true", headers=header).json()
-            verify = verifyTableExist(stmt, 'city')
-            if verify is None:
+            verifyCity = verifyTableExist(stmt, 'city')
+            if verifyCity is None:
                 stmt.execute("CREATE TABLE city(id, name, flag, company, validityperiod, state)")
             for city in cities['Municipios']:
+                verifyFeeList = verifyTableExist(stmt, 'FeeList')
+                if verifyFeeList is None:
+                    stmt.execute("CREATE TABLE FeeList(Description, TUSD, TE_Verde, TE_Amarela, TE_Vermelha, Discount, CodeCity)")
                 # Verify if the info of the city already exist in database, this is the best place for that code because speed up the script in case of the token expires
-                name = 'FeeList' + city['Codigo'] + state['Codigo']
-                verify = verifyTableExist(stmt, name)
-                if verify is None:
+                res = stmt.execute("SELECT CodeCity FROM FeeList WHERE CodeCity=?", [city['Codigo']])
+                verifyFeeListInsert = res.fetchone()
+                if verifyFeeListInsert is None:
                     # Collect data about the city
                     dataPost = {'CodMunicipio': city['Codigo']}
                     dataCity = requests.post(f'https://servicosonline.cpfl.com.br/agencia-webapi/api/taxas-tarifas/validar-situacao', json=dataPost, headers=header).json()
@@ -107,11 +108,8 @@ def main():
                     # Join data about the fee of the city
                     FeeList = dataCity['ListTarifas']
                     for Fee in FeeList:
-                        Fee['City'] = city['Codigo']
-                    sql = "CREATE TABLE {}(Description, TUSD, TE_Verde, TE_Amarela, TE_Vermelha, Discount)".format(name)
-                    stmt.execute(sql)
-                    sql = "INSERT INTO {} VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto)".format(name)
-                    stmt.executemany(sql, FeeList)
+                        Fee['CodeCity'] = city['Codigo']
+                    stmt.executemany("INSERT INTO FeeList VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto, :CodeCity)", FeeList)
                     conn.commit()
                 print("Next " + state['Codigo'] + "-" + city['Nome'])
             # Verify if the info of states is already in the table. This will prevent the duplication of the code 
