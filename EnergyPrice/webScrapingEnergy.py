@@ -105,6 +105,8 @@ def main():
                     city['ValidityPeriod'] = dataCity['PeriodoVigencia']
                     city['Flag'] = dataCity['Bandeira']
                     city['Company'] = dataCity['Empresa']
+                    # The commit of this INSERT is made in the final of this conditional part. It's necessary for do not duplicate the code
+                    stmt.execute("INSERT INTO city VALUES(:Codigo, :Nome, :Flag, :Company, :ValidityPeriod, :State)", city)
                     # Join data about the fee of the city
                     FeeList = dataCity['ListTarifas']
                     for Fee in FeeList:
@@ -112,12 +114,6 @@ def main():
                     stmt.executemany("INSERT INTO FeeList VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto, :CodeCity)", FeeList)
                     conn.commit()
                 print("Next " + state['Codigo'] + "-" + city['Nome'])
-            # Verify if the info of states is already in the table. This will prevent the duplication of the code 
-            res = stmt.execute("SELECT id FROM state WHERE id=?", [state['Codigo']])
-            compare = res.fetchone()
-            if compare is None:
-                stmt.executemany("INSERT INTO city VALUES(:Codigo, :Nome, :Flag, :Company, :ValidityPeriod, :State)", cities['Municipios'])
-                conn.commit()
     except Exception as e:
         e.with_traceback()
     finally:
