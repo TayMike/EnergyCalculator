@@ -45,7 +45,7 @@ def verifyTableExist(stmt: object, name: str) -> list:
 def main():
     """Web scraping data from CPFL
     To get the token authenticator is necessary check the captcha manually
-    After that the code is going to run fine, maybe you need run the script twice because the timer of the token
+    After that the code is going to run fine, maybe you need run the script several times because the timer of the token
     """
 
     # Take captcha token for Rest API
@@ -77,24 +77,23 @@ def main():
         header = {'Clientid': 'agencia-virtual-cpfl-web', 'Captcha-Token': token}
         states = requests.get('https://servicosonline.cpfl.com.br/agencia-webapi/api/estado?apenasConcessao=true', headers=header).json()
         # Connection with database
-        conn = sqlite3.connect('EnergyPrice\\EnergyBD.db')
+        conn = sqlite3.connect('EnergyPrice\\EnergyDB.db')
         stmt = conn.cursor()
-        verifyState = verifyTableExist(stmt, 'state')
+        verifyState = verifyTableExist(stmt, 'states')
         if verifyState is None:
-            stmt.execute("CREATE TABLE state(id, name)")
-            stmt.executemany("INSERT INTO state VALUES(:Codigo, :Nome)", states['Estados'])
-            conn.commit()
-        for state in states['Estados']:
+            stmt.execute("CREATE TABLE states(id INTEGER PRIMARY KEY, uf TEXT, name TEXT)")
+        for index, state in enumerate(states['Estados']):
+            state['id'] = index
             cities = requests.get(f"https://servicosonline.cpfl.com.br/agencia-webapi/api/estado/{state['Codigo']}/municipio?apenasConcessao=true", headers=header).json()
-            verifyCity = verifyTableExist(stmt, 'city')
+            verifyCity = verifyTableExist(stmt, 'cities')
             if verifyCity is None:
-                stmt.execute("CREATE TABLE city(id, name, flag, company, validityperiod, state)")
+                stmt.execute("CREATE TABLE cities(id INTEGER PRIMARY KEY, name TEXT, flag TEXT, company TEXT, validityperiod TEXT, state TEXT, FOREIGN KEY (state) REFERENCES states (id))")
             for city in cities['Municipios']:
-                verifyFeeList = verifyTableExist(stmt, 'FeeList')
+                verifyFeeList = verifyTableExist(stmt, 'fee_lists')
                 if verifyFeeList is None:
-                    stmt.execute("CREATE TABLE FeeList(Description, TUSD, TE_Verde, TE_Amarela, TE_Vermelha, Discount, CodeCity)")
+                    stmt.execute("CREATE TABLE fee_lists(Description TEXT, TUSD REAL, TE_Verde REAL, TE_Amarela REAL, TE_Vermelha REAL, Discount REAL, CodeCity INTEGER, CONSTRAINT PK_id PRIMARY KEY (Description, TUSD, TE_Verde, TE_Amarela, TE_Vermelha, Discount, CodeCity), FOREIGN KEY (CodeCity) REFERENCES cities (id))")
                 # Verify if the info of the city already exist in database, this is the best place for that code because speed up the script in case of the token expires
-                res = stmt.execute("SELECT CodeCity FROM FeeList WHERE CodeCity=?", [city['Codigo']])
+                res = stmt.execute("SELECT CodeCity FROM fee_lists WHERE CodeCity=?", [city['Codigo']])
                 verifyFeeListInsert = res.fetchone()
                 if verifyFeeListInsert is None:
                     # Collect data about the city
@@ -106,14 +105,16 @@ def main():
                     city['Flag'] = dataCity['Bandeira']
                     city['Company'] = dataCity['Empresa']
                     # The commit of this INSERT is made in the final of this conditional part. It's necessary for do not duplicate the code in case of restart
-                    stmt.execute("INSERT INTO city VALUES(:Codigo, :Nome, :Flag, :Company, :ValidityPeriod, :State)", city)
+                    stmt.execute("INSERT INTO cities VALUES(:Codigo, :Nome, :Flag, :Company, :ValidityPeriod, :State)", city)
                     # Join data about the fee of the city
                     FeeList = dataCity['ListTarifas']
                     for Fee in FeeList:
                         Fee['CodeCity'] = city['Codigo']
-                    stmt.executemany("INSERT INTO FeeList VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto, :CodeCity)", FeeList)
+                    stmt.executemany("INSERT INTO fee_lists VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto, :CodeCity)", FeeList)
                     conn.commit()
                 print("Next " + state['Codigo'] + "-" + city['Nome'])
+        stmt.executemany("INSERT INTO states VALUES(:id, :Codigo, :Nome)", states['Estados'])
+        conn.commit()
     except TimeoutError as e:
         raise e.with_traceback()
     finally:
