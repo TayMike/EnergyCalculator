@@ -78,6 +78,8 @@ def main():
         states = requests.get('https://servicosonline.cpfl.com.br/agencia-webapi/api/estado?apenasConcessao=true', headers=header).json()
         # Connection with database
         conn = sqlite3.connect('EnergyPrice\\EnergyDB.db')
+        # Active foreign key
+        conn.execute("PRAGMA foreign_keys = 1")
         stmt = conn.cursor()
         verifyState = verifyTableExist(stmt, 'states')
         if verifyState is None:
@@ -91,9 +93,9 @@ def main():
             for city in cities['Municipios']:
                 verifyFeeList = verifyTableExist(stmt, 'fee_lists')
                 if verifyFeeList is None:
-                    stmt.execute("CREATE TABLE fee_lists(Description TEXT, TUSD REAL, TE_Verde REAL, TE_Amarela REAL, TE_Vermelha REAL, Discount REAL, CodeCity INTEGER, CONSTRAINT PK_id PRIMARY KEY (Description, TUSD, TE_Verde, TE_Amarela, TE_Vermelha, Discount, CodeCity), FOREIGN KEY (CodeCity) REFERENCES cities (id))")
+                    stmt.execute("CREATE TABLE fee_lists(description TEXT, tusd REAL, te_verde REAL, te_amarela REAL, te_vermelha REAL, discount REAL, codecity INTEGER, FOREIGN KEY (codecity) REFERENCES cities (id))")
                 # Verify if the info of the city already exist in database, this is the best place for that code because speed up the script in case of the token expires
-                res = stmt.execute("SELECT CodeCity FROM fee_lists WHERE CodeCity=?", [city['Codigo']])
+                res = stmt.execute("SELECT codecity FROM fee_lists WHERE codecity=?", [city['Codigo']])
                 verifyFeeListInsert = res.fetchone()
                 if verifyFeeListInsert is None:
                     # Collect data about the city
