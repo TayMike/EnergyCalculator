@@ -48,9 +48,9 @@ def main():
     After that the code is going to run fine, maybe you need run the script several times because the timer of the token
     """
 
-    # Take captcha token for Rest API
-    webbrowser.open("https://servicosonline.cpfl.com.br/agencia-webapp/#/taxas-tarifas/localizar-distribuidora")
-    loadImage('captcha.png')
+    webbrowser.get('C:/Program Files/Mozilla Firefox/firefox.exe %s').open("https://servicosonline.cpfl.com.br/agencia-webapp/#/taxas-tarifas/localizar-distribuidora")
+    loadImage('captcha.png', locationX=-40)
+    pyautogui.click()
     pyautogui.press('f12')
     sleep(5)
     loadImage('network.png')
@@ -58,14 +58,14 @@ def main():
     loadImage('captcha.png')
     pyautogui.click()
     loadImage('provingSuccess.png')
-    loadImage('filter_network.png', locationY=25)
+    loadImage('filter_network.png', locationX=25)
     pyautogui.click(clicks=3, interval=0.25)
     pyautogui.write('token')
-    loadImage('token_network.png')
+    loadImage('token_network.png', locationY=20)
     pyautogui.click()
     loadImage('response_network.png')
     pyautogui.click()
-    loadImage('response_network.png', locationY=30)
+    loadImage('responsePayload_network.png', locationY=25)
     pyautogui.click(clicks=3, interval=0.25)
     pyautogui.hotkey(('ctrl', 'c'))
     token = pyperclip.paste()
@@ -76,6 +76,8 @@ def main():
         # Token is valid by 15 minutes
         header = {'Clientid': 'agencia-virtual-cpfl-web', 'Captcha-Token': token}
         states = requests.get('https://servicosonline.cpfl.com.br/agencia-webapi/api/estado?apenasConcessao=true', headers=header).json()
+        for index, state in enumerate(states['Estados']):
+            state['id'] = index
         # Connection with database
         conn = sqlite3.connect('EnergyPrice\\EnergyDB.db')
         # Active foreign key
@@ -84,25 +86,26 @@ def main():
         verifyState = verifyTableExist(stmt, 'states')
         if verifyState is None:
             stmt.execute("CREATE TABLE states(id INTEGER PRIMARY KEY, uf TEXT, name TEXT)")
-        for index, state in enumerate(states['Estados']):
-            state['id'] = index
+            stmt.executemany("INSERT INTO states VALUES(:id, :Codigo, :Nome)", states['Estados'])
+            conn.commit()
+        for state in states['Estados']:
             cities = requests.get(f"https://servicosonline.cpfl.com.br/agencia-webapi/api/estado/{state['Codigo']}/municipio?apenasConcessao=true", headers=header).json()
             verifyCity = verifyTableExist(stmt, 'cities')
             if verifyCity is None:
-                stmt.execute("CREATE TABLE cities(id INTEGER PRIMARY KEY, name TEXT, flag TEXT, company TEXT, validityperiod TEXT, state TEXT, FOREIGN KEY (state) REFERENCES states (id))")
+                stmt.execute("CREATE TABLE cities(id INTEGER PRIMARY KEY, name TEXT, flag TEXT, company TEXT, validityperiod TEXT, state_id INTEGER, FOREIGN KEY (state_id) REFERENCES states (id))")
             for city in cities['Municipios']:
                 verifyFeeList = verifyTableExist(stmt, 'fee_lists')
                 if verifyFeeList is None:
-                    stmt.execute("CREATE TABLE fee_lists(description TEXT, tusd REAL, te_verde REAL, te_amarela REAL, te_vermelha REAL, discount REAL, codecity INTEGER, FOREIGN KEY (codecity) REFERENCES cities (id))")
+                    stmt.execute("CREATE TABLE fee_lists(description TEXT, tusd REAL, te_verde REAL, te_amarela REAL, te_vermelha REAL, discount REAL, city_id INTEGER, FOREIGN KEY (city_id) REFERENCES cities (id))")
                 # Verify if the info of the city already exist in database, this is the best place for that code because speed up the script in case of the token expires
-                res = stmt.execute("SELECT codecity FROM fee_lists WHERE codecity=?", [city['Codigo']])
+                res = stmt.execute("SELECT city_id FROM fee_lists WHERE city_id=?", [city['Codigo']])
                 verifyFeeListInsert = res.fetchone()
                 if verifyFeeListInsert is None:
                     # Collect data about the city
                     dataPost = {'CodMunicipio': city['Codigo']}
                     dataCity = requests.post(f'https://servicosonline.cpfl.com.br/agencia-webapi/api/taxas-tarifas/validar-situacao', json=dataPost, headers=header).json()
                     # Join data about the city for SQL command
-                    city['State'] = state['Codigo']
+                    city['State'] = state['id']
                     city['ValidityPeriod'] = dataCity['PeriodoVigencia']
                     city['Flag'] = dataCity['Bandeira']
                     city['Company'] = dataCity['Empresa']
@@ -111,12 +114,10 @@ def main():
                     # Join data about the fee of the city
                     FeeList = dataCity['ListTarifas']
                     for Fee in FeeList:
-                        Fee['CodeCity'] = city['Codigo']
-                    stmt.executemany("INSERT INTO fee_lists VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto, :CodeCity)", FeeList)
+                        Fee['city_id'] = city['Codigo']
+                    stmt.executemany("INSERT INTO fee_lists VALUES(:Descricao, :TUSD_MWH, :TE_Verde, :TE_Amarela, :TE_Vermelha, :Desconto, :city_id)", FeeList)
                     conn.commit()
                 print("Next " + state['Codigo'] + "-" + city['Nome'])
-        stmt.executemany("INSERT INTO states VALUES(:id, :Codigo, :Nome)", states['Estados'])
-        conn.commit()
     except TimeoutError as e:
         raise e.with_traceback()
     finally:
