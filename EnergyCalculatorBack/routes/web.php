@@ -1,16 +1,18 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\StateController;
-use App\Http\Controllers\CityController;
-use App\Http\Controllers\FeeListController;
 
-Route::get('/', function(){
-    return view('home');
+/*
+|--------------------------------------------------------------------------
+| Web Routes
+|--------------------------------------------------------------------------
+|
+| Here is where you can register web routes for your application. These
+| routes are loaded by the RouteServiceProvider and all of them will
+| be assigned to the "web" middleware group. Make something great!
+|
+*/
+
+Route::get('/', function () {
+    return view('welcome');
 });
-
-Route::get('/simulador', [FeeListController::class, 'index']);
-
-// Route::get('/simulador', function(){
-//     return view('simulador');
-// });
