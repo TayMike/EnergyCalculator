@@ -13,6 +13,10 @@ class UserController extends Controller
 {
     use HttpResponses;
 
+    public function __construct() {
+        $this->middleware('auth:sanctum')->only(['index', 'show', 'update', 'destroy']);
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -57,16 +61,44 @@ class UserController extends Controller
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(Request $request, User $user)
     {
-        //
+        $validator = Validator::make($request->all(), [
+            'firstName' => 'required',
+            'lastName' => 'required',
+            'email' => 'required|email|unique:users,email',
+        ]);
+
+        if($validator->fails()) {
+            return $this->error('Data invalid', 422, $validator->errors());
+        }
+
+        $validated = $validator->validated();
+
+        $updated = $user->update([
+            'firstName' => $validated['firstName'],
+            'lastName' => $validated['lastName'],
+            'email' => $validated['email'],
+        ]);
+
+        if(!$updated) {
+            return $this->error('User not updated', 400);
+        }
+
+        return $this->response('User updated', 200, new UserResource($user));
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy(User $user)
     {
-        //
+        $deleted = $user->delete();
+
+        if(!$deleted) {
+            return $this->error('User not deleted', 400);
+        }
+
+        return $this->response('User deleted', 200);
     }
 }
